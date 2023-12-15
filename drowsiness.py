@@ -5,6 +5,7 @@ import threading
 import utils
 import numpy as np
 import time
+from camera_capture import Camera
 
 # Left eyes indices 
 LEFT_EYE =[ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385,384, 398 ]
@@ -38,10 +39,12 @@ class DrowsinessDetector():
 
         self.showimg = False
 
-        self.cap = cv.VideoCapture(0)
+        # self.cap = cv.VideoCapture(0)
+        self.camera = Camera()
         self.mp_face_mesh = mp.solutions.face_mesh
 
         self.FONTS = cv.FONT_HERSHEY_PLAIN
+
 
     def _landmarksDetection(self, img, results, draw=False):
         img_h, img_w, img_c = img.shape
@@ -85,13 +88,13 @@ class DrowsinessDetector():
             with self.mp_face_mesh.FaceMesh(min_detection_confidence =0.5, min_tracking_confidence=0.5) as face_mesh:
                 while self.is_running:
                     try:
-                        self.frame_counter += 1
-                        success, frame = self.cap.read()
-                        self.cap.grab()
+                        # success, frame = self.cap.read()
+                        # self.cap.grab()
 
-                        if not success:
-                            self.is_running = False
-                            break
+                        # if not success:
+                            # self.is_running = False
+                            # break
+                        frame = self.camera.getFrame()
 
                         frame = cv.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv.INTER_CUBIC)
                         frame_height, frame_width = frame.shape[:2]
@@ -142,6 +145,7 @@ class DrowsinessDetector():
                             cv.polylines(frame,  [np.array([mesh_coords[p] for p in RIGHT_EYE ], dtype=np.int32)], True, utils.GREEN, 1, cv.LINE_AA)
                         cv.imshow('frame', frame)
                         key = cv.waitKey(2)
+                        self.frame_counter += 1
                         if key==ord('q') or key ==ord('Q'):
                             break
                     except Exception as e:
