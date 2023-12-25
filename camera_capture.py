@@ -1,5 +1,3 @@
-from picamera.array import PiRGBArray 
-from picamera import PiCamera 
 import time 
 import cv2 
 import threading
@@ -13,25 +11,19 @@ class Camera():
         self.thread_lock = threading.Lock()
 
         self.current_frame = None
+        self.has_frame = True
+
         self.is_running = False 
         self.value = 0
         self.start()
 
     def updateFrame(self):
-        camera = PiCamera()
-        camera.resolution = (self.FRAME_HEIGHT, self.FRAME_WIDTH)
-        camera.framerate = self.FRAME_RATE 
-        raw_capture = PiRGBArray(camera, size=(self.FRAME_HEIGHT, self.FRAME_WIDTH))
+        camera = cv2.VideoCapture(0)
         time.sleep(0.1)
 
-        for frame in camera.capture_continuous(raw_capture, format="bgr", use_video_port=True):
-            if not self.is_running:
-                break
-            image = frame.array
-            image = cv2.flip(image,1)
-            self.current_frame = image.copy()
-            raw_capture.truncate(0)
-        camera.close()
+        while self.is_running:
+            self.has_frame, self.current_frame = camera.read() 
+        camera.release()
 
     def start(self):
         self.is_running = True
@@ -39,8 +31,8 @@ class Camera():
         self.thread.start()
     def stop(self):
         self.is_running = False
-    def getFrame(self):
-        return self.current_frame
+    def read(self):
+        return self.has_frame, self.current_frame
     def getValue(self):
         return self.value
 
@@ -51,10 +43,12 @@ if __name__ == "__main__":
     while True:
         try:
             with camera.thread_lock:
-                frame = camera.getFrame()
+                ret, frame = camera.read()
+                if not ret:
+                    continue
                 cv2.imshow("frame", frame)
                 key = cv2.waitKey(1) & 0xFF
-                time.sleep(2)
+                time.sleep(1)
 
                 if key == ord('q'):
                     camera.stop()

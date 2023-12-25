@@ -6,6 +6,7 @@ import utils
 import numpy as np
 import time
 from camera_capture import Camera
+import RPi.GPIO as GPIO
 
 # Left eyes indices 
 LEFT_EYE =[ 362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385,384, 398 ]
@@ -16,13 +17,18 @@ RIGHT_EYE=[ 33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 1
 RIGHT_EYEBROW=[ 70, 63, 105, 66, 107, 55, 65, 52, 53, 46 ]
 
 
+
 class DrowsinessDetector():
-    def __init__(self) -> None:
+    def __init__(self,show = False, buzz = False) -> None:
         self.BLINK_EYES_FRAME = 3  # if drowsy counter frame > 5, then dblink
         self.DROWSY_BLINKS = 5 # if blink frame > 5, then drowsy 
         self.SLEEPING_BLINKS = 12 # if blink frame > 10, then sleeping
 
+        self.BLINK_RATIO = 3.8
+
         self.frame_counter = 0
+        self.show = show
+        self.buzz = buzz
 
         self.awake_counter = 0
         self.drowsy_counter = 0
@@ -40,11 +46,16 @@ class DrowsinessDetector():
         self.showimg = False
 
         # self.cap = cv.VideoCapture(0)
-        self.camera = Camera()
         self.mp_face_mesh = mp.solutions.face_mesh
 
         self.FONTS = cv.FONT_HERSHEY_PLAIN
 
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        self.buzzer = 23
+        GPIO.setup(self.buzzer, GPIO.OUT)
+
+        self.isBuzzing = False
 
     def _landmarksDetection(self, img, results, draw=False):
         img_h, img_w, img_c = img.shape
@@ -85,30 +96,31 @@ class DrowsinessDetector():
     
     def drawsinessDetect(self):
         try:
+            self.camera = Camera()
             with self.mp_face_mesh.FaceMesh(min_detection_confidence =0.5, min_tracking_confidence=0.5) as face_mesh:
                 while self.is_running:
                     try:
-                        # success, frame = self.cap.read()
-                        # self.cap.grab()
-
-                        # if not success:
-                            # self.is_running = False
-                            # break
-                        frame = self.camera.getFrame()
+                        success, frame = self.camera.read()
+                        if not success:
+                            self.is_running = False
+                            break
 
                         frame = cv.resize(frame, None, fx=1.5, fy=1.5, interpolation=cv.INTER_CUBIC)
                         frame_height, frame_width = frame.shape[:2]
-                        
+                       
+                        self.frame_counter += 1
                         rgb_frame = cv.cvtColor(frame, cv.COLOR_RGB2BGR)
                         result = face_mesh.process(rgb_frame)
                         if result.multi_face_landmarks:
                             mesh_coords = self._landmarksDetection(frame, result, draw=True)
                             ratio_left, ratio_right = self._blinkRatio(frame, mesh_coords, RIGHT_EYE, LEFT_EYE)
 
-                            if ratio_left > 4 and ratio_right > 4:
+                            if (ratio_left + ratio_right) / 2 > self.BLINK_RATIO: 
                                 self.drowsy_counter += 1
                                 self.awake_counter = 0
                                 print(".")
+                                if self.show:
+                                    utils.colorBackgroundText(frame, f'BLINK', self.FONTS, 2.7, (300,100), 2, utils.YELLOW, pad_x = 6, pad_y = 6,)  
                             else:
                                 self.awake_counter += 1
                                 self.drowsy_counter = 0
@@ -124,14 +136,20 @@ class DrowsinessDetector():
                                 self.drowsy_counter = 0
                                 self.total_blinks += 1
                                 self.last_blink_frame = self.frame_counter
+
                             if self.frame_counter - self.last_blink_frame > 10:
-                                self.total_blinks -= 1
+                                self.total_blinks = 0 
                                 self.last_blink_frame = self.frame_counter
                                 if self.total_blinks < 0:
                                     self.total_blinks = 0
+                                if self.isBuzzing:
+                                    GPIO.output(self.buzzer, GPIO.LOW)
 
                             if self.total_blinks > self.DROWSY_BLINKS:
                                 print("Drowsy")
+                                if self.buzz:
+                                    GPIO.output(self.buzzer, GPIO.HIGH)
+                                    self.isBuzzing = True
                                 self.is_alert = True
                                 self.is_drowsy = True
 
@@ -140,14 +158,16 @@ class DrowsinessDetector():
                                 self.is_sleeping = True
                                 self.total_blinks = self.SLEEPING_BLINKS + 1
 
-                            utils.colorBackgroundText(frame,  f'Total Blinks: {self.total_blinks}', self.FONTS, 0.7, (30,150),2)
+                        if self.show:
+                            utils.colorBackgroundText(frame,  f'Total Blinks: {self.total_blinks}', self.FONTS, 1.7, (30,150),2)
+                            utils.colorBackgroundText(frame, f'Ratio: {round(ratio_left,2)} {round(ratio_right,2)}', self.FONTS, 1.7, (30,100), 2, utils.PINK, utils.YELLOW)
                             cv.polylines(frame,  [np.array([mesh_coords[p] for p in LEFT_EYE ], dtype=np.int32)], True, utils.GREEN, 1, cv.LINE_AA)
                             cv.polylines(frame,  [np.array([mesh_coords[p] for p in RIGHT_EYE ], dtype=np.int32)], True, utils.GREEN, 1, cv.LINE_AA)
-                        cv.imshow('frame', frame)
-                        key = cv.waitKey(2)
-                        self.frame_counter += 1
-                        if key==ord('q') or key ==ord('Q'):
-                            break
+                            cv.imshow('frame', frame)
+                            key = cv.waitKey(2)
+                            if key==ord('q') or key ==ord('Q'):
+                                self.stop()
+                                break
                     except Exception as e:
                         print(e)
                         pass
@@ -156,7 +176,7 @@ class DrowsinessDetector():
             pass
         finally:
             cv.destroyAllWindows()
-            self.cap.release()
+            self.camera.stop()
 
     def start(self):
         self.is_running = True
@@ -165,6 +185,7 @@ class DrowsinessDetector():
 
     def stop(self):
         self.is_running = False
+        self.thread.join()
 
     def isAlert(self):
         return self.is_alert
@@ -177,6 +198,6 @@ class DrowsinessDetector():
 
 
 if __name__ == "__main__":
-    drowsiness_detector = DrowsinessDetector()
+    drowsiness_detector = DrowsinessDetector(buzz = True)
     drowsiness_detector.start()
 

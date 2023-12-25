@@ -8,8 +8,9 @@ CPU_TMP_SRVC = '1111'
 CPU_TMP_CHRC = '2222'
 
 list_value = [0x02, 0x03, 0x01, 0x05]
+old_value = [0x00]
 
-drowsiness_detector = DrowsinessDetector()
+drowsiness_detector = DrowsinessDetector(buzz=True)
 
 def on_connect(device_address):
     print(f"Connected from {device_address}")
@@ -29,15 +30,17 @@ def read_value():
             return [0x00]
 
 def notify_callback(notifying, characteristic):
-    print("Notify callback called")
     if notifying:
         async_tools.add_timer_ms(50, send_notification, characteristic)
 
 
 def send_notification(characteristic):
-    print("Sending notify")
+    global old_value
     value = read_value()  # Giá trị để gửi đến điện thoại
-    characteristic.set_value(value)
+    if value != old_value:
+        characteristic.set_value(value)
+        print("Sending notify")
+    old_value = value
     return characteristic.is_notifying
 
 # Hàm chính
@@ -49,7 +52,7 @@ def main(adapter_address):
     # Tạo đối tượng peripheral
     peripheral_device = peripheral.Peripheral(
         adapter_address,
-        local_name='AEye Provip 3',
+        local_name='AEye Super Provip',
         appearance=1344
     )
 
