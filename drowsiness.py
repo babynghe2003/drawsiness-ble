@@ -17,7 +17,7 @@ RIGHT_EYEBROW=[ 70, 63, 105, 66, 107, 55, 65, 52, 53, 46 ]
 
 class DrowsinessDetector():
     def __init__(self) -> None:
-        self.BLINK_EYES_FRAME = 3  # if drowsy counter frame > 5, then dblink
+        self.BLINK_EYES_FRAME = 3  # if drowsy counter frame > 3, then dblink
         self.DROWSY_BLINKS = 5 # if blink frame > 5, then drowsy 
         self.SLEEPING_BLINKS = 12 # if blink frame > 10, then sleeping
 
@@ -170,7 +170,6 @@ class DrowsinessDetector():
 
     def isSleeping(self):
         return self.is_sleeping
-
 
 if __name__ == "__main__":
     drowsiness_detector = DrowsinessDetector()
